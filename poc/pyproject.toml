@@ -10,4 +10,4 @@ dependencies = [
 ]
 
 [project.scripts]
-log86 = "log86:main"
+log86 = "log86.__main__:main"
