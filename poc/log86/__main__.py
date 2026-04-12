@@ -19,8 +19,8 @@ def get_parser() -> ap.ArgumentParser:
 
     parser_show = subparsers.add_parser('show')
     parser_show.set_defaults(command=show)
-    parser_show.add_argument('-n', type=int, dest='repeat')    
-    
+    parser_show.add_argument('-n', type=int, dest='repeat')
+
     parser_bandwidth = subparsers.add_parser('bandwidth')
     parser_bandwidth.set_defaults(command=bandwidth)
     parser_bandwidth.add_argument('-c', type=int, dest='count', default=100)
@@ -35,7 +35,7 @@ def parse_args() -> Args:
 
 def get_port(args: Args) -> str:
     port = args.port
-    
+
     if not port:
         ports = obd.scan_serial()
         if not ports:
@@ -93,7 +93,7 @@ def show(args: Args):
 
 def bandwidth(args: Args):
     my_obd = get_obd(args)
-    
+
     start = time.perf_counter_ns()
 
     for _ in range(args.count):
