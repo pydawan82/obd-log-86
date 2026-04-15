@@ -10,16 +10,20 @@ import obd.commands as obdc
 class Args(ap.Namespace):
     port: str | None
     repeat: int | None
+    delay: float
     command: cabc.Callable[['Args'], None]
+    debug: bool 
 
 def get_parser() -> ap.ArgumentParser:
     parser = ap.ArgumentParser(prog='log86')
     subparsers = parser.add_subparsers(required=True)
     parser.add_argument('-p', '--port')
+    parser.add_argument('--debug', action='store_true')
 
     parser_show = subparsers.add_parser('show')
     parser_show.set_defaults(command=show)
     parser_show.add_argument('-n', type=int, dest='repeat')
+    parser_show.add_argument('-d', '--delay', type=float, default=1)
 
     parser_bandwidth = subparsers.add_parser('bandwidth')
     parser_bandwidth.set_defaults(command=bandwidth)
@@ -58,8 +62,28 @@ def repeat(count: int | None= None) -> cabc.Iterable[int]:
     else:
         return range(count)
 
-def format_cols(names: cabc.Iterable[str], widths: cabc.Iterable[int]) -> str:
-    return '  '.join(f'{name:{col_width}s}' for (name, col_width) in zip(names, widths))
+class TableFormatter:
+    def __init__(self, cols: list[str], min_col_width: int = 16):
+        self.cols = cols
+        self.col_widths = [
+            max(min_col_width, len(name))
+            for name in cols
+        ]
+
+    def format_cols(self):
+        return '  '.join(f'{name:>{col_width}s}' for (name, col_width) in zip(self.cols, self.col_widths))
+        
+    def _num_format(self, value) -> str:
+        match value:
+            case int():
+                return 'd'
+            case float():
+                return 'g'
+            case _:
+                raise TypeError
+
+    def format_row(self, values: list[float | int]):
+        return '  '.join(f'{value:{width}{self._num_format(value)}}' for (value, width) in zip(values, self.col_widths))
 
 def show(args: Args):
     my_obd = get_obd(args)
@@ -72,22 +96,20 @@ def show(args: Args):
         ('OIL TEMPERATURE', obdc.OIL_TEMP),
         ('FUEL RATE', obdc.FUEL_RATE)
     ]
-
-    col_widths = [max(8, len(name)) for (name, _) in obd_commands]
-    title = format_cols((x[0] for x in obd_commands), col_widths)
-    print(title)
+    
+    tbl = TableFormatter(['TIME'] + [x[0] for x in obd_commands])
+    print(tbl.format_cols())
 
     try:
         for _ in repeat(args.repeat):
             now = time.perf_counter()
-            values = [
-                    my_obd.query(command)
+            time_now = time.time_ns() // 1_000_000
+            print(tbl.format_row([time_now] + [
+                    my_obd.query(command).value.magnitude
                     for _, command in obd_commands
-            ]
-            row = '  '.join(f'{value.value.magnitude:{width}d}' for (value, width) in zip(values, col_widths))
-            print(row)
+            ]))
             then = time.perf_counter()
-            time.sleep(max(0., 1. + (now - then)))
+            time.sleep(max(0., args.delay + (now - then)))
     except KeyboardInterrupt:
         pass
 
@@ -105,7 +127,7 @@ def bandwidth(args: Args):
     duration_s = duration / 1e9
     query_bandwidth =  args.count / duration_s
 
-    print(f'Performed {args.count} query in {duration/1e6:d}ms; Average {query_bandwidth} query/s')
+    print(f'Performed {args.count} query in {duration/1e6:f}ms; Average {query_bandwidth} query/s')
 
 def main():
     args = parse_args()
@@ -113,7 +135,10 @@ def main():
     try:
         args.command(args)
     except Exception as e:
-        print(e, file=sys.stderr)
+        if args.debug:
+            raise
+        else:
+            print(e, file=sys.stderr)
 
 if __name__ == '__main__':
     main()
